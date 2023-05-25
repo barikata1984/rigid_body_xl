@@ -1,3 +1,7 @@
+import numpy as np
+import mujoco as mj
+
+
 def main():
     print("hello world!")
 
