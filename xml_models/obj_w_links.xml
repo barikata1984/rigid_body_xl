@@ -1,0 +1,24 @@
+<mujoco>
+    <worldbody>
+        <light name="top" pos="0 0 3"/>
+        <body name="object">
+            <joint name="tx" type="slide" axis="1 0 0"/>
+            <site name="ft_sen"/>
+            <geom name="red_box" type="box" size=".05 .1 .15" rgba="1 0 0 1"/>
+        </body>
+    </worldbody>
+
+    <actuator>
+        <motor name="mtr_tx" joint="tx"/>
+    </actuator>
+
+    <sensor>
+        <jointpos name="tx" joint="tx"/>
+        <jointvel name="dtx" joint="tx"/>
+        <actuatorfrc name="frc_tx" actuator="mtr_tx"/>
+    </sensor>
+
+    <visual>
+        <global offwidth="960" offheight="600"/>
+    </visual>
+</mujoco>

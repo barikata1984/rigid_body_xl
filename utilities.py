@@ -17,8 +17,8 @@ def classify_dict_kargs(dict_kargs):
     return arr_like, others
 
 
-def record(
-        log_array: np.ndarray,
-        data: np.ndarray) -> np.ndarray:
+def store(
+        data: np.ndarray,
+        log_array: np.ndarray) -> np.ndarray:
 
     return np.append(log_array, np.expand_dims(data, axis=0), axis=0)
