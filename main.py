@@ -62,15 +62,11 @@ def main():
     C = None  # Ignore C in this code
     D = None  # Ignore D as well
     mj.mjd_transitionFD(m, d, epsilon, centered, A, B, C, D)
-    print(f"A: {A}")
-    print(f"B: {B}")
     # Compute the feedback gain matrix K
     Q = np.eye(2 * nv)  # State cost matrix
-    R = np.eye(nu) * 10  # Input cost matrix
+    R = np.eye(nu)  # Input cost matrix
     P = scipy.linalg.solve_discrete_are(A, B, Q, R)
     P_cont = scipy.linalg.solve_continuous_are(A, B, Q, R)
-    print(f"P: {P}")
-    print(f"P_cont: {P_cont}")
     K = la.pinv(R + B.T @ P @ B) @ B.T @ P @ A
     print(f"K: {K}")
 
@@ -131,51 +127,40 @@ def main():
     traj = np.empty((0, 3, 6))
     # Cartesian coordinates of the object
     obj_pos_x = np.empty((0, 3))
-    # Postions, velocities, and accelerations of the joints included in the
-    # model in the joint space
-    qpos = np.empty((0, nu))
-    qvel = np.empty((0, nu))
-    qacc = np.empty((0, nu))
-    # Target control computed with the trajectory at each step and the control
-    # actually passed to the joints
-    tgt_ctrl = np.empty((0, nu))
-    ctrl = np.empty((0, nu))
+    # Joint postions, velocities, and accelerations included in the model
+    # expressed in the joint space
+    qpos, qvel, qacc = np.empty((3, 0, nu))
+    # Residual of qpos computed with mj_differentiatePos()
+    res_qpos = np.empty(nu)  # residual os joint positions
+    # For control signals
+    tgt_ctrl, res_ctrl, ctrl = np.empty((3, 0, nu))
     # Miscoellanious
     sensordata = np.empty((0, nsensordata))
     frame_count = 0
     time = []
-    tmp_dq = np.empty(nu)
-    dq = np.empty((0, nu))
-    curr_qfrc = np.empty((0, nu))
-    simple_qfrc = np.empty((0, nu))
 
     for i in range(n_steps):
         tgt_traj = plan_traj(i)
         traj = store(tgt_traj, traj)
         wrench_q = dyn.inverse(
             traj[-1], SE3_home_ba, sinert_b, screw_bb, twist_00, dtwist_00)
-        simple_qfrc = store(
-            np.atleast_1d(m.body_mass[-1] * traj[-1, 2, 0]), simple_qfrc)
         tgt_ctrl = store(wrench_q[:nu], tgt_ctrl)
 
         # Retrieve the current state in q
         qpos = store(d.qpos, qpos)
         qvel = store(d.qvel, qvel)
         qacc = store(d.qacc, qacc)
-        mj.mj_differentiatePos(m, tmp_dq, 1, qpos[-1], traj[-1, 0, :nu])
-        dq = store(tmp_dq, dq)
-#        mj.mj_differentiatePos(m, dq, 1, obj_pos_q[-1], traj[-1, 0, :nv])
-#        dq =  obj_pos_q[-1] - traj[-1, 0, :nv]
-#        d_state = np.hstack((qpos[-1], tmp_dq)).T
-        state = np.hstack((tmp_dq, qvel[-1])).T
-        curr_qfrc = store(K @ state, curr_qfrc)
-#        print(f"curr_qfrc {curr_qfrc}")
-#        act_ctrl = tgt_ctrl[-1, :nu] - K @ d_state
-        act_ctrl = simple_qfrc[-1, :nu] - curr_qfrc
-#        print(f"act_ctrl: {act_ctrl}")
-#        print(f"ctrl: {ctrl}")
-        ctrl = store(act_ctrl[-1], ctrl)
-        d.ctrl = simple_qfrc[-1, :nu]
+        mj.mj_differentiatePos(  # Use this fuction coz it can differenciate quaterninons representing body orientation
+            m,  # MjModel
+            res_qpos,  # dqpos_data_buffer
+            nu,  # idx of a joint up to which dqpos are calculated
+            qpos[-1],  # current qpos
+            traj[-1, 0, :nu])  # target qpos or next qpos to calculate dqvel
+        res_qvel = traj[-1, 1, :nu] - qvel[-1]
+        res_state = np.concatenate((res_qpos, res_qvel))
+        res_ctrl = store(-K @ res_state, res_ctrl)  # Note the minus before K
+        ctrl = store(tgt_ctrl[-1, :nu] + res_ctrl[-1], ctrl)
+        d.ctrl = ctrl[-1]
 
         # Store other necessary data
         sensordata = store(d.sensordata.copy(), sensordata)
@@ -184,7 +169,6 @@ def main():
 
         # Store frames following the fps
         if frame_count <= time[-1] * fps:
-#            print(f"current frc: {K @ d_state}")
             renderer.update_scene(d)
             img = renderer.render()[:, :, [2, 1, 0]]
             out.write(img)
@@ -224,15 +208,6 @@ def main():
         vis.ax_plot_lines_w_tgt(
             ctrl_axes[2], time, act_qfrc[:, 3:], tgt_ctrl[:, 3:], "q3-5 [N·m]")
 
-    # Plot the actual and target trajctories
-    dq_fig, dq_ax = plt.subplots(1, 1, sharex="col", tight_layout=True)
-    dq_fig.suptitle("dq VS qvel")
-    dq_ax.set(xlabel="time [s]")
-    vis.ax_plot_lines_w_tgt(
-        dq_ax, time, dq[:, :nu], qvel[:, :nu], "dq1 [m/s]")
-
-    fig, ax = plt.subplots(1, 1, sharex="col", tight_layout=True)
-    vis.ax_plot_lines(ax, time, curr_qfrc, None)
     plt.show()
 
 
