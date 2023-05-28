@@ -4,12 +4,12 @@ import scipy
 import numpy as np
 import mujoco as mj
 import planners as pln
-import dynamics as dyn
 import matplotlib as mpl
 import visualization as vis
 import transformations as tf
 from matplotlib import pyplot as plt
 from utilities import store
+from dynamics import compose_sinert_i, inverse
 from numpy import linalg as la
 from math import pi, radians as rad, degrees as deg
 
@@ -28,8 +28,6 @@ def main():
     d = mj.MjData(m)
 
     # Setup rendering conditoins and instantiate a VideoWriter
-    # See the following link for the error like "libGL error: MESA-LOADER: failed to open crocus: 
-    # https://stackoverflow.com/questions/71010343/cannot-load-swrast-and-iris-drivers-in-fedora-35/72200748#72200748
     codec_4chr = "mp4v"
     fourcc = cv2.VideoWriter_fourcc(*codec_4chr)
     fps = 60  # Rendering frequency [Hz]
@@ -66,14 +64,25 @@ def main():
     Q = np.eye(2 * nv)  # State cost matrix
     R = np.eye(nu)  # Input cost matrix
     P = scipy.linalg.solve_discrete_are(A, B, Q, R)
-    P_cont = scipy.linalg.solve_continuous_are(A, B, Q, R)
     K = la.pinv(R + B.T @ P @ B) @ B.T @ P @ A
     print(f"K: {K}")
 
+    # Description of suffixes used from the section below:
+    #   This   |        |
+    #  project | MuJoCo | Description
+    # ---------+--------+------------
+    #    _x    |  _x    | Described in {cartesian} or {world}
+    #    _b    |  _b    | Descried in {body)
+    #    _i    |  _i    | Described in {principal body}
+    #    _q    |  _q    | Described in the joint space
+    #    _xi   |  _xi   | Of {principal} rel. to {world}
+    #    _ba   |   -    | Of{body} rel. to {parent body}
+    #    _cb   |   -    | Of {child body}  rel. to {body}
+    #
     # Compose the principal spatial inertia matrix for each link including the
     # worldbody
     sinert_i = np.array([
-        dyn.compose_sinert_i(m, i) for m, i in zip(m.body_mass, m.body_inertia)])
+        compose_sinert_i(m, i) for m, i in zip(m.body_mass, m.body_inertia)])
     # Convert sinert_i to sinert_b rel2 the body frame
     sinert_b = np.empty((0, 6, 6))
     for p, q, si_i in zip(m.body_ipos, m.body_iquat, sinert_i):
@@ -142,7 +151,7 @@ def main():
     for i in range(n_steps):
         tgt_traj = plan_traj(i)
         traj = store(tgt_traj, traj)
-        wrench_q = dyn.inverse(
+        wrench_q = inverse(
             traj[-1], SE3_home_ba, sinert_b, screw_bb, twist_00, dtwist_00)
         tgt_ctrl = store(wrench_q[:nu], tgt_ctrl)
 
@@ -150,12 +159,12 @@ def main():
         qpos = store(d.qpos, qpos)
         qvel = store(d.qvel, qvel)
         qacc = store(d.qacc, qacc)
-        mj.mj_differentiatePos(  # Use this fuction coz it can differenciate quaterninons representing body orientation
+        mj.mj_differentiatePos(  # Use this func to differenciate quat properly
             m,  # MjModel
             res_qpos,  # dqpos_data_buffer
-            nu,  # idx of a joint up to which dqpos are calculated
+            nu,  # idx of a joint up to which res_qpos are calculated
             qpos[-1],  # current qpos
-            traj[-1, 0, :nu])  # target qpos or next qpos to calculate dqvel
+            traj[-1, 0, :nu])  # target qpos or next qpos to calkculate dqvel
         res_qvel = traj[-1, 1, :nu] - qvel[-1]
         res_state = np.concatenate((res_qpos, res_qvel))
         res_ctrl = store(-K @ res_state, res_ctrl)  # Note the minus before K
