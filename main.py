@@ -65,7 +65,7 @@ def main():
     R = np.eye(nu)  # Input cost matrix
     P = scipy.linalg.solve_discrete_are(A, B, Q, R)
     K = la.pinv(R + B.T @ P @ B) @ B.T @ P @ A
-    print(f"K: {K}")
+#    print(f"K: {K}")
 
     # Description of suffixes used from the section below:
     #   This   |        |
@@ -114,7 +114,7 @@ def main():
     # Set simulation time and timeste
     duration = 5  # Simulation time [s]
     timestep = mj.MjOption().timestep  # 0.002 [s] (500 [Hz]) by default
-    print(f"Timestep (frequency): {timestep} [s] ({1/timestep} [Hz])")
+    print(f"Timestep (freq.): {timestep} [s] ({1/timestep} [Hz])")
     n_steps = int(duration / timestep)
     print(f"# of steps: {n_steps}")
     # Determin start and end displacements of the target trajectory
@@ -132,7 +132,7 @@ def main():
     dtwist_00 = -gacc_x
     print(f"dtwist_00: {dtwist_00}")
 
-    # Data storage arrays
+    # Data storage
     traj = np.empty((0, 3, 6))
     # Cartesian coordinates of the object
     obj_pos_x = np.empty((0, 3))
